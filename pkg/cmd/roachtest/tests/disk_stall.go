@@ -13,7 +13,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"runtime"
 	"strings"
 	"time"
@@ -22,6 +21,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/registry"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
+	"github.com/cockroachdb/cockroach/pkg/util/contextutil"
+	"github.com/cockroachdb/cockroach/pkg/util/retry"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 )
 
@@ -54,40 +55,54 @@ func runDiskStalledDetection(
 	if c.IsLocal() && runtime.GOOS != "linux" {
 		t.Fatalf("must run on linux os, found %s", runtime.GOOS)
 	}
-
 	n := c.Node(1)
 
-	c.Put(ctx, t.Cockroach(), "./cockroach")
-	c.Run(ctx, n, "sudo umount -f {store-dir}/faulty || true")
-	c.Run(ctx, n, "mkdir -p {store-dir}/{real,faulty} || true")
-	// Make sure the actual logs are downloaded as artifacts.
-	c.Run(ctx, n, "rm -f logs && ln -s {store-dir}/real/logs logs || true")
-
-	t.Status("setting up charybdefs")
-
-	if err := c.Install(ctx, t.L(), n, "charybdefs"); err != nil {
+	// Create a loop device on the node to which we can then attach the delay.
+	t.Status("configuring mounts")
+	c.Run(ctx, n, "dd if=/dev/zero of={store-dir}/faulty_fs bs=1M count=1k")
+	c.Run(ctx, n, "mkfs.ext4 {store-dir}/faulty_fs")
+	res, err := c.RunWithDetailsSingleNode(ctx, t.L(), n, "sudo losetup -f --show {store-dir}/faulty_fs")
+	if err != nil {
 		t.Fatal(err)
 	}
-	c.Run(ctx, n, "sudo charybdefs {store-dir}/faulty -oallow_other,modules=subdir,subdir={store-dir}/real")
+	dev := strings.TrimSpace(res.Stdout)
+
+	res, err = c.RunWithDetailsSingleNode(ctx, t.L(), n, fmt.Sprintf("sudo blockdev --getsz %s", dev))
+	if err != nil {
+		t.Fatal(err)
+	}
+	devSize := strings.TrimSpace(res.Stdout)
+
+	// Set up the delayed FS on top of the loop device.
+	cmd := fmt.Sprintf(
+		`echo "0 %s delay %s 0 0" | sudo dmsetup create delayed`,
+		devSize, dev,
+	)
+	c.Run(ctx, n, cmd)
+
+	// Mount the delayed FS.
+	c.Run(ctx, n, "sudo umount -f {store-dir}/faulty || true")
+	c.Run(ctx, n, "mkdir -p {store-dir}/{real,faulty} || true")
+	c.Run(ctx, n, "sudo mount /dev/mapper/delayed {store-dir}/faulty")
+
 	c.Run(ctx, n, "sudo mkdir -p {store-dir}/real/logs")
 	c.Run(ctx, n, "sudo chmod -R 777 {store-dir}/{real,faulty}")
 
+	// Make sure the actual logs are downloaded as artifacts.
+	c.Run(ctx, n, "rm -f logs && ln -s {store-dir}/real/logs logs || true")
+
 	errCh := make(chan install.RunResultDetails)
 
-	// NB: charybdefs' delay nemesis introduces 50ms per syscall. It would
-	// be nicer to introduce a longer delay, but this works.
-	tooShortSync := 40 * time.Millisecond
+	// Lower the default max log and engine sync times. This allows the test to
+	// fail faster.
+	const maxSync = 10 * time.Second
 
-	maxLogSync := time.Hour
 	logDir := "real/logs"
 	if affectsLogDir {
 		logDir = "faulty/logs"
-		maxLogSync = tooShortSync
 	}
-	maxDataSync := time.Hour
 	dataDir := "real"
 	if affectsDataDir {
-		maxDataSync = tooShortSync
 		dataDir = "faulty"
 	}
 
@@ -104,8 +119,9 @@ func runDiskStalledDetection(
 				"COCKROACH_ENGINE_MAX_SYNC_DURATION_DEFAULT=%s "+
 				"COCKROACH_LOG_MAX_SYNC_DURATION=%s "+
 				"COCKROACH_AUTO_BALLAST=false "+
-				"./cockroach start-single-node --insecure --store {store-dir}/%s --log '{sinks: {stderr: {filter: INFO}}, file-defaults: {dir: \"{store-dir}/%s\"}}'",
-				int(dur.Seconds()), maxDataSync, maxLogSync, dataDir, logDir,
+				"./cockroach start-single-node --insecure --store {store-dir}/%s "+
+				"--log '{sinks: {stderr: {filter: INFO}}, file-defaults: {dir: \"{store-dir}/%s\"}}'",
+				int(dur.Seconds()), maxSync, maxSync, dataDir, logDir,
 			),
 		)
 		if err != nil {
@@ -114,10 +130,28 @@ func runDiskStalledDetection(
 		errCh <- result
 	}()
 
-	time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
+	t.Status("waiting for node to become ready")
+	const readyTimeout = 30 * time.Second
+	err = contextutil.RunWithTimeout(ctx, "wait-for-ready", readyTimeout, func(ctx context.Context) error {
+		conn := c.Conn(ctx, t.L(), 1)
+		return retry.ForDuration(readyTimeout, func() error {
+			return WaitForReplication(ctx, t, conn, 1)
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	t.Status("blocking storage")
-	c.Run(ctx, n, "charybdefs-nemesis --delay")
+	go func() {
+		t.Status("blocking storage")
+		ioWaitTime := (2 * maxSync).Milliseconds()
+		cmd = fmt.Sprintf(
+			`echo "0 %s delay %s 0 %d" | sudo dmsetup reload delayed &&`+
+				`sudo dmsetup resume delayed`,
+			devSize, dev, ioWaitTime,
+		)
+		c.Run(ctx, n, cmd)
+	}()
 
 	result := <-errCh
 	if result.Err == nil {
@@ -134,6 +168,17 @@ func runDiskStalledDetection(
 		t.Fatalf("no disk stall injected, but process terminated too early after %s (expected >= %s)", elapsed, dur)
 	}
 
-	c.Run(ctx, n, "charybdefs-nemesis --clear")
+	t.Status("unblocking storage")
+	cmd = fmt.Sprintf(
+		`echo "0 %s delay %s 0 0" | sudo dmsetup reload delayed && `+
+			`sudo dmsetup resume delayed`,
+		devSize, dev,
+	)
+	c.Run(ctx, n, cmd)
+
+	t.Status("cleaning up")
 	c.Run(ctx, n, "sudo umount {store-dir}/faulty")
+	c.Run(ctx, n, "sudo dmsetup remove delayed")
+	c.Run(ctx, n, fmt.Sprintf("sudo losetup -d %s", dev))
+	c.Run(ctx, n, "rm {store-dir}/faulty_fs")
 }
