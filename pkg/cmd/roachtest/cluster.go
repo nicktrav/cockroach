@@ -944,14 +944,14 @@ func attachToExistingCluster(
 		r: r,
 	}
 
-	if err := r.registerCluster(c); err != nil {
-		return nil, err
-	}
-
 	if !opt.skipValidation {
 		if err := c.validate(ctx, spec, l); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := r.registerCluster(c); err != nil {
+		return nil, err
 	}
 
 	if !opt.skipStop {
