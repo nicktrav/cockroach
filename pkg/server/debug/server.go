@@ -14,6 +14,7 @@ import (
 	"context"
 	"expvar"
 	"fmt"
+	"github.com/cockroachdb/cockroach/pkg/sql"
 	"io"
 	"net/http"
 	"net/http/pprof"
@@ -171,7 +172,7 @@ func analyzeLSM(dir string, writer io.Writer) error {
 }
 
 // RegisterEngines setups up debug engine endpoints for the known storage engines.
-func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engine) error {
+func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engine, sql *sql.InternalExecutor) error {
 	if len(specs) != len(engines) {
 		// TODO(yevgeniy): Consider adding accessors to storage.Engine to get their path.
 		return errors.New("number of store specs must match number of engines")
@@ -195,11 +196,12 @@ func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engi
 	})
 
 	ds.mux.HandleFunc("/debug/lsm/tables", func(w http.ResponseWriter, req *http.Request) {
-		for i := range engines {
-			fmt.Fprintf(w, "Store %d:\n", storeIDs[i].StoreID)
-			// TODO(travers): execute
-			fmt.Fprintln(w)
+		out, err := ds.debugSpansAllTables(sql, engines)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
+		_, _ = w.Write(out)
 	})
 
 	for i := 0; i < len(specs); i++ {

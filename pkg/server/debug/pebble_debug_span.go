@@ -1,12 +1,15 @@
 package debug
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 	"github.com/cockroachdb/cockroach/pkg/storage"
+	"github.com/dustin/go-humanize"
 )
 
 type tableSpan struct {
@@ -14,6 +17,54 @@ type tableSpan struct {
 	tableName              string
 	startKey, endKey       []byte
 	startPretty, endPretty string
+}
+
+func (ds *Server) debugSpansAllTables(sql *sql.InternalExecutor, engines []storage.Engine) ([]byte, error) {
+	tables, err := ds.queryTableSpans(sql)
+	if err != nil {
+		return nil, err
+	}
+
+	type tableLevelStats struct {
+		tableName string
+		files     int
+		bytes     uint64
+	}
+	type storeStats struct {
+		store  int
+		levels [7][]tableLevelStats
+	}
+
+	var ss []storeStats
+	for i, e := range engines {
+		s := storeStats{store: i}
+		for _, t := range tables {
+			spanStats := e.DebugSpan(t.startKey, t.endKey)
+			for j, l := range spanStats.Levels {
+				s.levels[j] = append(s.levels[j], tableLevelStats{
+					tableName: t.tableName,
+					files:     l.NumFiles,
+					bytes:     l.TotalBytes,
+				})
+			}
+		}
+		ss = append(ss, s)
+	}
+
+	// Format the output and return ....
+	var b bytes.Buffer
+	for _, s := range ss {
+		_, _ = fmt.Fprintf(&b, "Store: %d\n", s.store)
+		for i, level := range s.levels {
+			_, _ = fmt.Fprintf(&b, "  L%d:\n", i)
+			for _, table := range level {
+				_, _ = fmt.Fprintf(&b, "    %s: %d files, %s\n", table.tableName, table.files, humanize.Bytes(table.bytes))
+			}
+		}
+		_, _ = fmt.Fprint(&b, "\n")
+	}
+
+	return b.Bytes(), nil
 }
 
 func (ds *Server) queryTableSpans(sqlExecutor *sql.InternalExecutor) ([]tableSpan, error) {
@@ -81,11 +132,4 @@ WHERE mm.rn_start = 1 AND mm.rn_end = 1`
 		spans = append(spans, span)
 	}
 	return spans, err
-}
-
-func (ds *Server) getDebugSpansAllTables(engine *storage.Engine, start, end []byte) {
-
-}
-
-func (ds *Server) getDebugSpan(engine *storage.Engine, start, end []byte) {
 }
