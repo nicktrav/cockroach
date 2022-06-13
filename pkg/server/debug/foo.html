@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>LSM Spans</title>
+  <style>
+    .lsm {
+      font-family: monospace;
+    }
+    .level {
+      display: none;
+    }
+    .content {
+      overflow: hidden;
+    }
+    ul {
+      padding-left: 0;
+    }
+    .collapsible {
+      list-style: disclosure-closed inside;
+    }
+    .collapsible.active {
+      list-style-type: disclosure-open;
+    }
+  </style>
+  <script>
+    document.addEventListener("DOMContentLoaded", function(){
+      let coll = document.getElementsByClassName("collapsible");
+      for (let i = 0; i < coll.length; i++) {
+        coll[i].addEventListener("click", function() {
+          let content = this.nextElementSibling;
+          if (content.style.display === "block") {
+            content.style.display = "none";
+          } else {
+            content.style.display = "block";
+          }
+          this.classList.toggle("active");
+        });
+      }
+    });
+  </script>
+</head>
+<body>
+  <div class="lsm">
+    {{ range $store := . -}}
+    <div>Store {{ $store.Store }}</div>
+    <ul>
+      {{- range $i, $levelSlice := $store.Levels }}
+      <li class="collapsible">--- L{{ $i }} ---</li>
+      <div class="content level">
+        {{- range $table := $levelSlice }}
+        <div><a href="/debug/lsm/span?start={{ $table.StartByte }}&end={{ $table.EndByte }}" target="_blank">[{{ $table.Start }},{{ $table.End }})</a>: {{ $table.Files }} files, {{ $table.Bytes }} bytes</div>
+        {{- end }}
+      </div>
+      {{- end }}
+    </ul>
+    {{- end }}
+  </div>
+</body>
+</html>

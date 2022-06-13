@@ -1343,14 +1343,12 @@ def go_deps():
         build_directives = ["gazelle:build_tags invariants"],
         build_file_proto_mode = "disable_global",
         importpath = "github.com/cockroachdb/pebble",
+        vcs = "git",
+        remote = "/home/nickt/Development/pebble",
+        commit = "50c3fdd91c681cf2d32865a915924db2fdfbbe84",
         patch_args = ["-p1"],
         patches = [
             "@com_github_cockroachdb_cockroach//build/patches:com_github_cockroachdb_pebble.patch",
-        ],
-        sha256 = "6fb7e9f191b1efde244b55dec4697e6128eb17186b3cc25b0eae2f196024004b",
-        strip_prefix = "github.com/cockroachdb/pebble@v0.0.0-20220603185428-ad44a62e4d04",
-        urls = [
-            "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/cockroachdb/pebble/com_github_cockroachdb_pebble-v0.0.0-20220603185428-ad44a62e4d04.zip",
         ],
     )
     go_repository(

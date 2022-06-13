@@ -14,6 +14,7 @@ import (
 	"context"
 	"expvar"
 	"fmt"
+	"github.com/cockroachdb/cockroach/pkg/sql"
 	"io"
 	"net/http"
 	"net/http/pprof"
@@ -159,7 +160,7 @@ func analyzeLSM(dir string, writer io.Writer) error {
 	var lsm *cobra.Command
 	for _, c := range t.Commands {
 		if c.Name() == "lsm" {
-			lsm = c
+			//lsm = c
 		}
 	}
 	if lsm == nil {
@@ -171,7 +172,7 @@ func analyzeLSM(dir string, writer io.Writer) error {
 }
 
 // RegisterEngines setups up debug engine endpoints for the known storage engines.
-func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engine) error {
+func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engine, sql *sql.InternalExecutor) error {
 	if len(specs) != len(engines) {
 		// TODO(yevgeniy): Consider adding accessors to storage.Engine to get their path.
 		return errors.New("number of store specs must match number of engines")
@@ -193,6 +194,7 @@ func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engi
 			fmt.Fprintln(w)
 		}
 	})
+	ds.registerDebugSpans(sql, engines)
 
 	for i := 0; i < len(specs); i++ {
 		if specs[i].InMemory {

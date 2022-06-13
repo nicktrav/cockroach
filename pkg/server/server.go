@@ -1538,7 +1538,7 @@ func (s *Server) PreStart(ctx context.Context) error {
 		return err
 	}
 
-	if err := s.debug.RegisterEngines(s.cfg.Stores.Specs, s.engines); err != nil {
+	if err := s.debug.RegisterEngines(s.cfg.Stores.Specs, s.engines, s.sqlServer.internalExecutor); err != nil {
 		return errors.Wrapf(err, "failed to register engines with debug server")
 	}
 	s.debug.RegisterClosedTimestampSideTransport(s.ctSender, s.node.storeCfg.ClosedTimestampReceiver)
