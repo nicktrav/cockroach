@@ -159,7 +159,7 @@ func analyzeLSM(dir string, writer io.Writer) error {
 	var lsm *cobra.Command
 	for _, c := range t.Commands {
 		if c.Name() == "lsm" {
-			lsm = c
+			//lsm = c
 		}
 	}
 	if lsm == nil {
@@ -190,6 +190,14 @@ func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engi
 		for i := range engines {
 			fmt.Fprintf(w, "Store %d:\n", storeIDs[i].StoreID)
 			_, _ = io.WriteString(w, engines[i].GetMetrics().String())
+			fmt.Fprintln(w)
+		}
+	})
+
+	ds.mux.HandleFunc("/debug/lsm/tables", func(w http.ResponseWriter, req *http.Request) {
+		for i := range engines {
+			fmt.Fprintf(w, "Store %d:\n", storeIDs[i].StoreID)
+			// TODO(travers): execute
 			fmt.Fprintln(w)
 		}
 	})

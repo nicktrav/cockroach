@@ -975,6 +975,8 @@ type Engine interface {
 	// MinVersionIsAtLeastTargetVersion returns whether the engine's recorded
 	// storage min version is at least the target version.
 	MinVersionIsAtLeastTargetVersion(target roachpb.Version) (bool, error)
+
+	DebugSpan(start, end []byte) pebble.SpanStats
 }
 
 // Batch is the interface for batch specific operations.

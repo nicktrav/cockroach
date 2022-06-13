@@ -461,8 +461,6 @@ func DefaultPebbleOptions() *pebble.Options {
 		Merger:                      MVCCMerger,
 		BlockPropertyCollectors:     PebbleBlockPropertyCollectors,
 	}
-	// Used for experimental MVCC range tombstones.
-	opts.Experimental.RangeKeys = new(pebble.RangeKeysArena)
 	// Automatically flush 10s after the first range tombstone is added to a
 	// memtable. This ensures that we can reclaim space even when there's no
 	// activity on the database generating flushes.
@@ -1776,6 +1774,10 @@ func (p *Pebble) SetMinVersion(version roachpb.Version) error {
 // MinVersionIsAtLeastTargetVersion implements the Engine interface.
 func (p *Pebble) MinVersionIsAtLeastTargetVersion(target roachpb.Version) (bool, error) {
 	return MinVersionIsAtLeastTargetVersion(p.unencryptedFS, p.path, target)
+}
+
+func (p *Pebble) DebugSpan(start, end []byte) pebble.SpanStats {
+	return p.db.DebugSpan(start, end)
 }
 
 type pebbleReadOnly struct {
