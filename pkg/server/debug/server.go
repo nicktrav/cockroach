@@ -194,15 +194,7 @@ func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engi
 			fmt.Fprintln(w)
 		}
 	})
-
-	ds.mux.HandleFunc("/debug/lsm/tables", func(w http.ResponseWriter, req *http.Request) {
-		out, err := ds.debugSpansAllTables(sql, engines)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		_, _ = w.Write(out)
-	})
+	ds.registerDebugSpans(sql, engines)
 
 	for i := 0; i < len(specs); i++ {
 		if specs[i].InMemory {

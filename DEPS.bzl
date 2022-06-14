@@ -1345,7 +1345,7 @@ def go_deps():
         importpath = "github.com/cockroachdb/pebble",
         vcs = "git",
         remote = "/Users/nickt/Development/pebble",
-        commit = "17878cd81b77ac880f06fac4e05fa8e0d68670a3",
+        commit = "9a70ab1a7ab2dd3ee9ca74b5275fc0c9030c18e5",
         patch_args = ["-p1"],
         patches = [
             "@com_github_cockroachdb_cockroach//build/patches:com_github_cockroachdb_pebble.patch",
