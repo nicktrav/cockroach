@@ -83,7 +83,8 @@ func runImportCancellation(ctx context.Context, t test.Test, c cluster.Cluster) 
 		t.Fatal(err)
 	}
 
-	rng, seed := randutil.NewPseudoRand()
+	seed := int64(1666467482296309000)
+	rng := randutil.NewTestRandWithSeed(seed)
 
 	tablesToNumFiles := map[string]int{
 		"region":   1,
