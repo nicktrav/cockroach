@@ -37,9 +37,7 @@ import (
 func gcTables(
 	ctx context.Context, execCfg *sql.ExecutorConfig, progress *jobspb.SchemaChangeGCProgress,
 ) error {
-	if log.V(2) {
-		log.Infof(ctx, "GC is being considered for tables: %+v", progress.Tables)
-	}
+	log.Infof(ctx, "GC is being considered for tables: %+v", progress.Tables)
 	for _, droppedTable := range progress.Tables {
 		if droppedTable.Status != jobspb.SchemaChangeGCProgress_CLEARING {
 			// Table is not ready to be dropped, or has already been dropped.
@@ -167,6 +165,7 @@ func clearSpanData(
 				},
 			})
 			log.VEventf(ctx, 2, "ClearRange %s - %s", lastKey, endKey)
+			log.Infof(ctx, "ClearRange %s - %s", lastKey, endKey)
 			if err := db.Run(ctx, &b); err != nil {
 				return errors.Wrapf(err, "clear range %s - %s", lastKey, endKey)
 			}
@@ -258,6 +257,7 @@ func deleteAllSpanData(
 				UpdateRangeDeleteGCHint: true,
 			})
 			log.VEventf(ctx, 2, "delete range %s - %s", lastKey, endKey)
+			log.Infof(ctx, "delete range %s - %s", lastKey, endKey)
 			if err := db.Run(ctx, &b); err != nil {
 				return errors.Wrapf(err, "delete range %s - %s", lastKey, endKey)
 			}
