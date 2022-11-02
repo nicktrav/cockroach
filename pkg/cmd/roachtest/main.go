@@ -263,7 +263,7 @@ runner itself.
 				args:                   args,
 				count:                  count,
 				cpuQuota:               cpuQuota,
-				debugEnabled:           debugEnabled,
+				debugEnabled:           true,
 				runSkipped:             runSkipped,
 				skipInit:               skipInit,
 				httpPort:               httpPort,
