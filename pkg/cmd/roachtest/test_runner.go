@@ -927,6 +927,8 @@ func (r *testRunner) runTest(
 		s := "success"
 		if t.Failed() {
 			s = "failure"
+			t.L().Printf("test failed: keeping cluster around for debugging purposes")
+			return nil
 		}
 		t.L().Printf("tearing down after %s; see teardown.log", s)
 	case <-time.After(timeout):
