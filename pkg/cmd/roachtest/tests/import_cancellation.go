@@ -72,6 +72,9 @@ func runImportCancellation(ctx context.Context, t test.Test, c cluster.Cluster) 
 	if _, err := conn.Exec(`SET CLUSTER SETTING kv.bulk_ingest.max_index_buffer_size = '2gb'`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := conn.Exec(`SET CLUSTER SETTING server.debug.default_vmodule = "sst_batcher=5,buffering_adder=5";`); err != nil {
+		t.Fatal(err)
+	}
 	// Increase AddSSTable concurrency to speed up the imports. Otherwise the
 	// lineitem (the largest tpch table) IMPORT will extend the test duration
 	// significantly.
