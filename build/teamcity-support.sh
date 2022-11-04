@@ -130,24 +130,6 @@ function would_stress() {
   fi
 }
 
-function maybe_stress() {
-   # NB: This code doesn't know about posting Github issues as we don't stress on
-   # the release branches.
-  if ! would_stress; then
-    return 0
-  fi
-
-  target=$1
-  shift
-
-  block="Maybe ${target} pull request"
-  tc_start_block "${block}"
-  run build/builder.sh make protobuf
-  run build/builder.sh go install ./pkg/cmd/github-pull-request-make
-  run_json_test build/builder.sh env BUILD_VCS_NUMBER="$BUILD_VCS_NUMBER" TARGET="${target}" github-pull-request-make
-  tc_end_block "${block}"
-}
-
 # Returns the list of release branches from origin (origin/release-*), ordered
 # by version (higher version numbers first).
 get_release_branches() {
@@ -282,12 +264,22 @@ changed_go_pkgs() {
     | { while read path; do if ls "$path"/*.go &>/dev/null; then echo -n "./$path "; fi; done; }
 }
 
+# tc_build_branch returns $TC_BUILD_BRANCH but with the optional refs/heads/
+# prefix stripped.
+tc_build_branch() {
+    echo "${TC_BUILD_BRANCH#refs/heads/}"
+}
+
+# NB: Update _tc_release_branch in teamcity-bazel-support.sh if you update this
+# function.
 tc_release_branch() {
-  [[ "$TC_BUILD_BRANCH" == master || "$TC_BUILD_BRANCH" == release-* || "$TC_BUILD_BRANCH" == provisional_* ]]
+  branch=$(tc_build_branch)
+  [[ "$branch" == master || "$branch" == release-* || "$branch" == provisional_* ]]
 }
 
 tc_bors_branch() {
-  [[ "$TC_BUILD_BRANCH" == staging ]]
+  branch=$(tc_build_branch)
+  [[ "$branch" == staging ]]
 }
 
 if_tc() {
@@ -310,9 +302,18 @@ generate_ssh_key() {
   fi
 }
 
-# Call this function with one argument, the error message to print if the
-# workspace is dirty.
+begin_check_generated_code_tests() {
+    echo "##teamcity[testSuiteStarted name='CheckGeneratedCode']"
+}
+
+end_check_generated_code_tests() {
+    echo "##teamcity[testSuiteFinished name='CheckGeneratedCode']"
+}
+
+# Call this function with two arguments: the name of the "test" that will be
+# reported to teamcity and the error message to print if the workspace is dirty.
 check_workspace_clean() {
+  echo "##teamcity[testStarted name='CheckGeneratedCode/$1' captureStandardOutput='true']"
   # The workspace is clean iff `git status --porcelain` produces no output. Any
   # output is either an error message or a listing of an untracked/dirty file.
   if [[ "$(git status --porcelain 2>&1)" != "" ]]; then
@@ -320,7 +321,10 @@ check_workspace_clean() {
     git diff -a >&2 || true
     echo "====================================================" >&2
     echo "Some automatically generated code is not up to date." >&2
-    echo $1 >&2
+    echo $2 >&2
+    echo "##teamcity[testFailed name='CheckGeneratedCode/$1']"
+    echo "##teamcity[testFinished name='CheckGeneratedCode/$1']"
     exit 1
   fi
+  echo "##teamcity[testFinished name='CheckGeneratedCode/$1']"
 }
