@@ -219,6 +219,9 @@ func (t *importCancellationTest) runImportSequence(
 	// of some of the keys remnant from failed imports.
 
 	attempts := randutil.RandIntInRange(rng, 2, 5)
+	if tableName == "lineitem" {
+		attempts = 4
+	}
 	for i := 0; i < attempts && len(filesToImport) > 0; i++ {
 		t.WorkerStatus(fmt.Sprintf(`attempt %d/%d for table %q`, i+1, attempts, tableName))
 		files := filesToImport
