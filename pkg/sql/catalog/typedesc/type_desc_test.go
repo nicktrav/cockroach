@@ -375,20 +375,20 @@ func TestValidateTypeDesc(t *testing.T) {
 	)
 
 	var cb nstree.MutableCatalog
-	cb.UpsertDescriptor(dbdesc.NewBuilder(&descpb.DatabaseDescriptor{
+	cb.UpsertDescriptorEntry(dbdesc.NewBuilder(&descpb.DatabaseDescriptor{
 		Name: "db",
 		ID:   dbID,
 	}).BuildImmutable())
-	cb.UpsertDescriptor(schemadesc.NewBuilder(&descpb.SchemaDescriptor{
+	cb.UpsertDescriptorEntry(schemadesc.NewBuilder(&descpb.SchemaDescriptor{
 		ID:       schemaID,
 		ParentID: dbID,
 		Name:     "schema",
 	}).BuildImmutable())
-	cb.UpsertDescriptor(typedesc.NewBuilder(&descpb.TypeDescriptor{
+	cb.UpsertDescriptorEntry(typedesc.NewBuilder(&descpb.TypeDescriptor{
 		ID:   typeID,
 		Name: "type",
 	}).BuildImmutable())
-	cb.UpsertDescriptor(dbdesc.NewBuilder(&descpb.DatabaseDescriptor{
+	cb.UpsertDescriptorEntry(dbdesc.NewBuilder(&descpb.DatabaseDescriptor{
 		Name: "multi-region-db",
 		ID:   multiRegionDBID,
 		RegionConfig: &descpb.DatabaseDescriptor_RegionConfig{

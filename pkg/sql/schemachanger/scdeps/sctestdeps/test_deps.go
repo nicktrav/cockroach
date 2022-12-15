@@ -578,11 +578,11 @@ func (s *TestState) mustReadImmutableDescriptor(id descpb.ID) (catalog.Descripto
 // mustReadMutableDescriptor looks up a descriptor and returns a mutable
 // deep copy.
 func (s *TestState) mustReadMutableDescriptor(id descpb.ID) (catalog.MutableDescriptor, error) {
-	u := s.uncommitted.LookupDescriptor(id)
+	u := s.uncommitted.LookupDescriptorEntry(id)
 	if u == nil {
 		return nil, errors.Wrapf(catalog.ErrDescriptorNotFound, "reading mutable descriptor #%d", id)
 	}
-	c := s.committed.LookupDescriptor(id)
+	c := s.committed.LookupDescriptorEntry(id)
 	return descbuilder.BuildMutable(c, u.DescriptorProto(), s.mvccTimestamp())
 }
 
@@ -773,18 +773,18 @@ func (b *testCatalogChangeBatcher) ValidateAndRun(ctx context.Context) error {
 			}
 		}
 		b.s.LogSideEffectf("delete %s namespace entry %v -> %d", nameType, nameInfo, expectedID)
-		b.s.uncommitted.DeleteByName(nameInfo)
+		b.s.uncommitted.DeleteNamespaceEntry(nameInfo)
 	}
 	for _, desc := range b.descs {
 		mut := desc.NewBuilder().BuildCreatedMutable()
 		mut.ResetModificationTime()
 		desc = mut.ImmutableCopy()
 		b.s.LogSideEffectf("upsert descriptor #%d\n%s", desc.GetID(), b.s.descriptorDiff(desc))
-		b.s.uncommitted.UpsertDescriptor(desc)
+		b.s.uncommitted.UpsertDescriptorEntry(desc)
 	}
 	for _, deletedID := range b.descriptorsToDelete.Ordered() {
 		b.s.LogSideEffectf("delete descriptor #%d", deletedID)
-		b.s.uncommitted.DeleteByID(deletedID)
+		b.s.uncommitted.DeleteDescriptorEntry(deletedID)
 	}
 	for _, deletedID := range b.zoneConfigsToDelete.Ordered() {
 		b.s.LogSideEffectf("deleting zone config for #%d", deletedID)

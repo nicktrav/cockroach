@@ -119,12 +119,12 @@ func (s *TestState) WithTxn(fn func(s *TestState)) {
 			s.uncommitted.UpsertNamespaceEntry(e, e.GetID(), e.GetMVCCTimestamp())
 			return nil
 		})
-		_ = u.ForEachDescriptor(func(d catalog.Descriptor) error {
+		_ = u.ForEachDescriptorEntry(func(d catalog.Descriptor) error {
 			mut := d.NewBuilder().BuildCreatedMutable()
 			mut.ResetModificationTime()
 			d = mut.ImmutableCopy()
-			s.committed.UpsertDescriptor(d)
-			s.uncommitted.UpsertDescriptor(d)
+			s.committed.UpsertDescriptorEntry(d)
+			s.uncommitted.UpsertDescriptorEntry(d)
 			return nil
 		})
 		s.LogSideEffectf("commit transaction #%d", s.txnCounter)
