@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catalogkeys"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
-	"github.com/cockroachdb/cockroach/pkg/sql/catalog/nstree"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/zone"
 )
 
@@ -71,12 +70,6 @@ func (uc *uncommittedComments) upsert(key catalogkeys.CommentKey, cmt string) {
 	uc.uncommitted[key] = cmt
 }
 
-func (uc *uncommittedComments) addAllToCatalog(mc nstree.MutableCatalog) {
-	for ck, cmt := range uc.uncommitted {
-		mc.UpsertComment(ck, cmt)
-	}
-}
-
 type uncommittedZoneConfigs struct {
 	uncommitted map[descpb.ID]catalog.ZoneConfig
 	cachedDescs map[descpb.ID]struct{}
@@ -120,10 +113,4 @@ func (uc *uncommittedZoneConfigs) upsert(id descpb.ID, zc *zonepb.ZoneConfig) er
 	}
 	uc.uncommitted[id] = zone.NewZoneConfigWithRawBytes(zc, rawBytes)
 	return nil
-}
-
-func (uc *uncommittedZoneConfigs) addAllToCatalog(mc nstree.MutableCatalog) {
-	for id, zc := range uc.uncommitted {
-		mc.UpsertZoneConfig(id, zc.ZoneConfigProto(), zc.GetRawBytesInStorage())
-	}
 }
