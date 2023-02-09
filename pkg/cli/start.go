@@ -452,6 +452,49 @@ func runStartInternal(
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, DrainSignals...)
 
+	// Set up a cancellable context for the entire start command.
+	// The context will be canceled at the end.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// The context annotation ensures that server identifiers show up
+	// in the logging metadata as soon as they are known.
+	ambientCtx := serverCfg.AmbientCtx
+
+	// Annotate the context, and set up a tracing span for the start process.
+	//
+	// The context annotation ensures that server identifiers show up
+	// in the logging metadata as soon as they are known.
+	//
+	// The tracing span is because we want any logging happening beyond
+	// this point to be accounted to this start context, including
+	// logging related to the initialization of the logging
+	// infrastructure below.  This span concludes when the startup
+	// goroutine started below has completed.
+	// TODO(andrei): we don't close the span on the early returns below.
+	var startupSpan *tracing.Span
+	ctx, startupSpan = ambientCtx.AnnotateCtxWithSpan(ctx, "server start")
+
+	st := serverCfg.BaseConfig.Settings
+
+	// Derive temporary/auxiliary directory specifications. This should happen
+	// before the disk full checks (below), to allow obsolete temp dirs to be
+	// cleaned up and reclaim space.
+	st.ExternalIODir = startCtx.externalIODir
+
+	var err error
+	stopper := stop.NewStopper()
+	if serverCfg.SQLConfig.TempStorageConfig, err = initTempStorageConfig(
+		ctx, st, stopper, serverCfg.Stores,
+	); err != nil {
+		return err
+	}
+
+	// Configure the default storage engine.
+	if serverCfg.StorageEngine == enginepb.EngineTypeDefault {
+		serverCfg.StorageEngine = enginepb.EngineTypePebble
+	}
+
 	// Check for stores with full disks and exit with an informative exit
 	// code. This needs to happen early during start, before we perform any
 	// writes to the filesystem including log rotation. We need to guarantee
@@ -473,29 +516,6 @@ func runStartInternal(
 	// making progress.
 	log.SetMakeProcessUnavailableFunc(closeAllSockets)
 
-	// Set up a cancellable context for the entire start command.
-	// The context will be canceled at the end.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// The context annotation ensures that server identifiers show up
-	// in the logging metadata as soon as they are known.
-	ambientCtx := serverCfg.AmbientCtx
-
-	// Annotate the context, and set up a tracing span for the start process.
-	//
-	// The context annotation ensures that server identifiers show up
-	// in the logging metadata as soon as they are known.
-	//
-	// The tracing span is because we want any logging happening beyond
-	// this point to be accounted to this start context, including
-	// logging related to the initialization of the logging
-	// infrastructure below.  This span concludes when the startup
-	// goroutine started below has completed.  TODO(andrei): we don't
-	// close the span on the early returns below.
-	var startupSpan *tracing.Span
-	ctx, startupSpan = ambientCtx.AnnotateCtxWithSpan(ctx, "server start")
-
 	// Set up the logging and profiling output.
 	//
 	// We want to do this as early as possible, because most of the code
@@ -508,7 +528,7 @@ func runStartInternal(
 	// additional server configuration tweaks for the startup process
 	// must be necessarily non-logging-related, as logging parameters
 	// cannot be picked up beyond this point.
-	stopper, err := setupAndInitializeLoggingAndProfiling(ctx, cmd, true /* isServerCmd */)
+	err = setupAndInitializeLoggingAndProfiling(ctx, cmd, true /* isServerCmd */)
 	if err != nil {
 		return err
 	}
@@ -542,22 +562,6 @@ func runStartInternal(
 	// environment variables.
 	if err := initConfigFn(ctx); err != nil {
 		return errors.Wrapf(err, "failed to initialize %s", serverType)
-	}
-
-	st := serverCfg.BaseConfig.Settings
-
-	// Derive temporary/auxiliary directory specifications.
-	st.ExternalIODir = startCtx.externalIODir
-
-	if serverCfg.SQLConfig.TempStorageConfig, err = initTempStorageConfig(
-		ctx, st, stopper, serverCfg.Stores,
-	); err != nil {
-		return err
-	}
-
-	// Configure the default storage engine.
-	if serverCfg.StorageEngine == enginepb.EngineTypeDefault {
-		serverCfg.StorageEngine = enginepb.EngineTypePebble
 	}
 
 	// The configuration is now ready to report to the user and the log
@@ -1290,9 +1294,9 @@ disk space exhaustion may result in node loss.`, ballastPathsStr)
 // in an OnInitialize function.
 func setupAndInitializeLoggingAndProfiling(
 	ctx context.Context, cmd *cobra.Command, isServerCmd bool,
-) (stopper *stop.Stopper, err error) {
+) error {
 	if err := setupLogging(ctx, cmd, isServerCmd, true /* applyConfig */); err != nil {
-		return nil, err
+		return err
 	}
 
 	if startCtx.serverInsecure {
@@ -1348,13 +1352,8 @@ func setupAndInitializeLoggingAndProfiling(
 	initBlockProfile()
 	initMutexProfile()
 
-	// Disable Stopper task tracking as performing that call site tracking is
-	// moderately expensive (certainly outweighing the infrequent benefit it
-	// provides).
-	stopper = stop.NewStopper()
 	log.Event(ctx, "initialized profiles")
-
-	return stopper, nil
+	return nil
 }
 
 // initGEOS sets up the Geospatial library.
